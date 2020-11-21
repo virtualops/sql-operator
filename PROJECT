@@ -1,0 +1,11 @@
+domain: breeze.sh
+layout: go.kubebuilder.io/v2
+projectName: sql-operator
+repo: github.com/virtualops/sql-operator
+resources:
+- group: db
+  kind: Database
+  version: v1alpha1
+version: 3-alpha
+plugins:
+  go.sdk.operatorframework.io/v2-alpha: {}

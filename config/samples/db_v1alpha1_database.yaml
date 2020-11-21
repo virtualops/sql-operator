@@ -1,0 +1,9 @@
+apiVersion: db.breeze.sh/v1alpha1
+kind: Database
+metadata:
+  name: operator-test-db
+spec:
+  # Add fields here
+  name: operator-test
+  encoding: utf8mb4
+  collation: utf8mb4_unicode_ci
