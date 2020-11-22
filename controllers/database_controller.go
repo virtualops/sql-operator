@@ -90,7 +90,7 @@ func (r *DatabaseReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 		}
 	}
 
-		// If the DB has already been created, we do nothing since the object is immutable
+	// If the DB has already been created, we do nothing since the object is immutable
 	if !db.Status.CreatedAt.IsZero() {
 		log.Info("DB already exists, won't create")
 		return ctrl.Result{}, nil
