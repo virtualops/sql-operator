@@ -34,7 +34,8 @@ type UserSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	Username   string      `json:"username,omitempty"`
-	SecretName string      `json:"secret_name,omitempty"`
+	Host       string      `json:"host,omitempty"`
+	SecretName string      `json:"secretName,omitempty"`
 	Grants     []GrantSpec `json:"grants,omitempty"`
 }
 

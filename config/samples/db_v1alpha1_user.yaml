@@ -4,6 +4,7 @@ metadata:
   name: user-sample
 spec:
   username: leo
+  host: '%'
   secretName: leo-db-credentials
   grants:
     - target: 'jobilla.*'

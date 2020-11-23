@@ -7,6 +7,12 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+- apiGroups:
   - db.breeze.sh
   resources:
   - databases
@@ -22,6 +28,26 @@ rules:
   - db.breeze.sh
   resources:
   - databases/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - db.breeze.sh
+  resources:
+  - users
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - db.breeze.sh
+  resources:
+  - users/status
   verbs:
   - get
   - patch
