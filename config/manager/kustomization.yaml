@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: phroggyy/sql-operator
-  newTag: v0.0.17
+  newTag: v0.0.20

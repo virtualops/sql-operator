@@ -88,19 +88,9 @@ func (r *UserReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 				return ctrl.Result{}, err
 			}
 
-
 			// If the deletion succeeded, remove the finalizer so deletion can complete
 			user.ObjectMeta.Finalizers = removeString(user.ObjectMeta.Finalizers, finalizerName)
 			if err := r.Update(context.Background(), user); err != nil {
-				return ctrl.Result{}, err
-			}
-
-			if err := r.Delete(ctx, &v1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      user.Spec.SecretName,
-					Namespace: user.Namespace,
-				},
-			}); err != nil {
 				return ctrl.Result{}, err
 			}
 		}
@@ -121,6 +111,12 @@ func (r *UserReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      user.Spec.SecretName,
 				Namespace: user.Namespace,
+				OwnerReferences: []metav1.OwnerReference{{
+					APIVersion: user.APIVersion,
+					Kind:       user.Kind,
+					Name:       user.Name,
+					UID:        user.UID,
+				}},
 			},
 			StringData: map[string]string{
 				"DB_USERNAME": user.Spec.Username,
