@@ -3,6 +3,7 @@ package grants
 import (
 	"github.com/juliangruber/go-intersect"
 	"github.com/virtualops/sql-operator/api/v1alpha1"
+	"reflect"
 )
 
 type GrantDiff struct {
@@ -11,28 +12,57 @@ type GrantDiff struct {
 }
 
 // SegmentByTarget will split the current and new grant specs into three slices
-// containing [current-intersection] [intersection] [new-intersection]
-func SegmentByTarget(current, new []v1alpha1.GrantSpec) ([]v1alpha1.GrantSpec, [][2]v1alpha1.GrantSpec, []v1alpha1.GrantSpec) {
+// containing [current - intersection] [intersection] [new - intersection]
+func SegmentByTarget(currentGrants, newGrants []v1alpha1.GrantSpec) ([]v1alpha1.GrantSpec, [][2]v1alpha1.GrantSpec, []v1alpha1.GrantSpec) {
 	// we create a map from the hash identifier (grant target) to a slice of
 	// two indices – the index in current, and the index in new
 	hashMap := map[string]int{}
+
+	// because we're modifying slices directly, we need to make local copies to not modify the source slices
+	current := make([]v1alpha1.GrantSpec, len(currentGrants))
+	new := make([]v1alpha1.GrantSpec, len(newGrants))
+
+	copy(current, currentGrants)
+	copy(new, newGrants)
 
 	for i, spec := range current {
 		hashMap[spec.Target] = i
 	}
 
 	intersection := map[string][2]v1alpha1.GrantSpec{}
-	for i, spec := range new {
-		// if the key exists, the target exists in `current` and we have an intersect, so we leave it there, and remove it from `new`
+
+
+	for target, _ := range hashMap {
+		remove := true
+		for _, spec := range new {
+			if target == spec.Target {
+				remove = false
+				break
+			}
+		}
+
+		if remove {
+			delete(hashMap, target)
+		}
+	}
+
+	i := 0
+	for {
+		if len(new) <= i {
+			break
+		}
+		spec := new[i]
+
 		if _, ok := hashMap[spec.Target]; ok {
 			intersection[spec.Target] = [2]v1alpha1.GrantSpec{{}, spec}
 			copy(new[i:], new[i+1:])               // Shift a[i+1:] left one index.
-			new[len(new)-1] = v1alpha1.GrantSpec{} // Erase last element (write zero value).
+			//new[len(new)-1] = v1alpha1.GrantSpec{} // Erase last element (write zero value).
 			new = new[:len(new)-1]                 // Truncate slice.
-		} else {
-			// otherwise, the intersect does not exist and we remove the key from the hashmap
-			delete(hashMap, spec.Target)
+			// we do an early continue to avoid iterating `i` since we shifted the list
+			continue
 		}
+
+		i++
 	}
 
 	for _, i := range hashMap {
@@ -41,10 +71,30 @@ func SegmentByTarget(current, new []v1alpha1.GrantSpec) ([]v1alpha1.GrantSpec, [
 		records[0] = record
 		intersection[record.Target] = records
 
-		copy(current[i:], current[i+1:])               // Shift a[i+1:] left one index.
-		current[len(current)-1] = v1alpha1.GrantSpec{} // Erase last element (write zero value).
-		current = current[:len(current)-1]             // Truncate slice.
+		// set a zero value for all to remove
+		current[i] = v1alpha1.GrantSpec{}
 	}
+
+	i = 0
+	for {
+		if len(current) <= i {
+			break
+		}
+		// if we have a zero object, we unshift it and keep the index as is
+		// since the next element will now have the current index.
+		if reflect.ValueOf(current[i]).IsZero() {
+			copy(current[i:], current[i+1:])
+			current = current[:len(current)-1]
+			continue
+		}
+
+		// otherwise, this element should be kept and we continue iterating
+		i++
+	}
+
+	//copy(current[i:], current[i+1:])               // Shift a[i+1:] left one index.
+	//current[len(current)-1] = v1alpha1.GrantSpec{} // Erase last element (write zero value).
+	//current = current[:len(current)-1]             // Truncate slice.
 
 	var output [][2]v1alpha1.GrantSpec
 	for _, set := range intersection {
@@ -52,6 +102,10 @@ func SegmentByTarget(current, new []v1alpha1.GrantSpec) ([]v1alpha1.GrantSpec, [
 	}
 
 	return current, output, new
+}
+
+func DiffPrivileges(curr, new []string) GrantDiff {
+	return GrantDiff{}
 }
 
 func GenerateExecutionPlan(current, new []v1alpha1.GrantSpec) GrantDiff {
@@ -75,13 +129,14 @@ func GenerateExecutionPlan(current, new []v1alpha1.GrantSpec) GrantDiff {
 			continue
 		}
 
-
 		var permsIntersect []string
 
 		for _, t := range intersect.Hash(oldPerms.Privileges, newPerms.Privileges).([]interface{}) {
 			permsIntersect = append(permsIntersect, t.(string))
 		}
 	}
+
+	return diff
 }
 
 func buildTargetIntersection(current, new []v1alpha1.GrantSpec) []v1alpha1.GrantSpec {
