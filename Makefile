@@ -27,7 +27,7 @@ all: manager
 
 # Setup binaries required to run the tests
 # See that it expects the Kubernetes and ETCD version
-K8S_VERSION = v1.19.1
+K8S_VERSION = v1.19.3
 ETCD_VERSION = v3.4.3
 testbin:
 	curl -sSLo setup_envtest.sh https://raw.githubusercontent.com/kubernetes-sigs/controller-runtime/master/hack/setup-envtest.sh

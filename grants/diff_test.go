@@ -48,6 +48,10 @@ func TestGenerateExecutionPlan(t *testing.T) {
 			Target:     "test.change",
 			Privileges: []string{"CREATE", "UPDATE", "SELECT"},
 		},
+		{
+			Target:     "test.unchanged",
+			Privileges: []string{"SELECT"},
+		},
 	}
 	newGrants := []v1alpha1.GrantSpec{
 		{
@@ -57,6 +61,10 @@ func TestGenerateExecutionPlan(t *testing.T) {
 		{
 			Target:     "test.add",
 			Privileges: []string{"*"},
+		},
+		{
+			Target:     "test.unchanged",
+			Privileges: []string{"SELECT"},
 		},
 	}
 
