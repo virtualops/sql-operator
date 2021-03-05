@@ -75,3 +75,22 @@ func TestGenerateExecutionPlan(t *testing.T) {
 		Privileges: []string{"SELECT"},
 	}, diff.Revoke[1])
 }
+
+func TestGenerateExecutionPlanWithoutCurrentGrants(t *testing.T) {
+	newGrants := []v1alpha1.GrantSpec{
+		{
+			Target:     "test.change",
+			Privileges: []string{"CREATE", "UPDATE", "DELETE"},
+		},
+		{
+			Target:     "test.add",
+			Privileges: []string{"*"},
+		},
+	}
+
+	diff := GenerateExecutionPlan(nil, newGrants)
+	assert.Len(t, diff.Grant, 2) // 1 grant to add test.add, one to GRANT DELETE
+	assert.Len(t, diff.Revoke, 0) // 1 revoke to remove test.remove, one to REVOKE SELECT
+
+	assert.Equal(t, diff.Grant, newGrants)
+}

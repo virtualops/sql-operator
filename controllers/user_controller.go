@@ -20,7 +20,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/jmoiron/sqlx"
-	"github.com/juliangruber/go-intersect"
+	"github.com/virtualops/sql-operator/grants"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -47,7 +47,6 @@ type UserReconciler struct {
 // +kubebuilder:rbac:groups=db.breeze.sh,resources=users,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=db.breeze.sh,resources=users/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=create
-
 func (r *UserReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	ctx := context.Background()
 	log := r.Log.WithValues("user", req.NamespacedName)
@@ -105,7 +104,6 @@ func (r *UserReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 			return ctrl.Result{}, err
 		}
 
-		log.WithValues("secret_name", user.Spec.SecretName)
 		// We'll store the credentials in a secret
 		err = r.Create(ctx, &v1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
@@ -128,6 +126,7 @@ func (r *UserReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 			return ctrl.Result{}, err
 		}
 
+		log.WithValues("secret_name", user.Spec.SecretName).Info("stored credentials")
 		user.Status.CreatedAt = metav1.NewTime(time.Now())
 
 		err = r.Status().Update(ctx, user)
@@ -137,84 +136,38 @@ func (r *UserReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 		}
 	}
 
-	// Check for any grants to change
-	// 1. Target intersection
-	var currTargets []string
-	var newTargets []string
-	for _, g := range user.Status.CurrentGrants {
-		currTargets = append(currTargets, g.Target)
-	}
-	for _, g := range user.Spec.Grants {
-		newTargets = append(newTargets, g.Target)
-	}
+	executionPlan := grants.GenerateExecutionPlan(user.Status.CurrentGrants, user.Spec.Grants)
 
-	var targetIntersect []string
+	for _, grant := range executionPlan.Grant {
+		privilegeString := getPrivilegeExpression(grant)
+		_, err := r.DB.Exec(fmt.Sprintf("GRANT %s ON %s TO '%s'@'%s'", privilegeString, grant.Target, user.Spec.Username, user.Spec.Host))
 
-	for _, t := range intersect.Hash(currTargets, newTargets).([]interface{}) {
-		targetIntersect = append(targetIntersect, t.(string))
-	}
-
-	for _, g := range user.Status.CurrentGrants {
-		// We will remove all currently applied grants that do not intersect with new grants
-		if containsString(targetIntersect, g.Target) {
-			continue
-		}
-
-		log.WithValues("target", g.Target).Info("revoking grants")
-		_, err := r.DB.Exec(fmt.Sprintf("REVOKE ALL FROM '%s'@'%s' ON %s", user.Spec.Username, user.Spec.Host, g.Target))
-
+		// right now, the `user.status` will be absolutely whack if this errors on any but the first grant,
+		// since we will have granted permissions and then errored, which means the status reflects the
+		// pre-grant state instead of properly accounting for the previous iteration's applied grant.
 		if err != nil {
-			return ctrl.Result{}, nil
-		}
-
-		user.Status.CurrentGrants = removeGrantFromListByTarget(user.Status.CurrentGrants, g)
-
-		err = r.Status().Update(ctx, user)
-
-		if err != nil {
-			return ctrl.Result{}, nil
+			return ctrl.Result{}, err
 		}
 	}
 
-	for _, g := range user.Spec.Grants {
-		// If a new grant target is not in the intersection, it should be added
-		if containsString(targetIntersect, g.Target) {
-			continue
-		}
-
-		if len(g.Privileges) == 0 {
-			continue
-		}
-
-		privilegeString := getPrivilegeExpression(g)
-
-		log.WithValues("target", g.Target, "privileges", privilegeString).Info("granting new permissions")
-		_, err := r.DB.Exec(fmt.Sprintf("GRANT %s ON %s TO '%s'@'%s'", privilegeString, g.Target, user.Spec.Username, user.Spec.Host))
+	for _, grant := range executionPlan.Revoke {
+		privilegeString := getPrivilegeExpression(grant)
+		_, err := r.DB.Exec(fmt.Sprintf("REVOKE %s ON %s FROM '%s'@'%s'", privilegeString, grant.Target, user.Spec.Username, user.Spec.Host))
 
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+	}
 
-		user.Status.CurrentGrants = append(user.Status.CurrentGrants, g)
+	user.Status.CurrentGrants = user.Spec.Grants
 
-		err = r.Status().Update(ctx, user)
+	err = r.Status().Update(ctx, user)
 
-		if err != nil {
-			return ctrl.Result{}, err
-		}
+	if err != nil {
+		return ctrl.Result{}, nil
 	}
 
 	return ctrl.Result{}, nil
-}
-
-func removeGrantFromListByTarget(list []dbv1alpha1.GrantSpec, g dbv1alpha1.GrantSpec) (output []dbv1alpha1.GrantSpec) {
-	for _, grant := range list {
-		if grant.Target != g.Target {
-			output = append(output, grant)
-		}
-	}
-
-	return
 }
 
 func getPrivilegeExpression(g dbv1alpha1.GrantSpec) string {
